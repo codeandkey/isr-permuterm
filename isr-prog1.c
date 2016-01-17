@@ -104,17 +104,12 @@ void free_tree(isr1_tree_node* root);
 
 int hash_word(char* word_buf, int word_len, char* out_buf, int out_len); /* Hash a word into a buffer. */
 int word_cmp(char* word_buf1, int word_len1, char* word_buf2, int word_len2); /* Returns 1 if word1 > word2, -1 if word1 < word2, and 0 if word1 = word2. */
-void print_list(isr1_word_entry* list);
 
 /* Internal sorting functions. */
 
 isr1_word_entry* merge_nodes(isr1_word_entry* first, isr1_word_entry* second);
 int divide_list(isr1_word_entry* head, isr1_word_entry** first, isr1_word_entry** second);
 int list_length(isr1_word_entry* head);
-
-/* Debug functions : useful in showing program status and data structures. */
-
-void dump_tree(isr1_tree_node* root);
 
 /* Function definitions. */
 
@@ -428,38 +423,6 @@ int word_cmp(char* word_buf1, int word_len1, char* word_buf2, int word_len2) {
 	}
 }
 
-void dump_tree(isr1_tree_node* root) {
-	if (!root) {
-		return;
-	}
-
-	printf("Dumping tree node : hash [");
-
-	for (int i = 0; i < ISR1_HASH_LENGTH; ++i) {
-		printf("%02X", root->node_hash[i] & 0xFF);
-	}
-
-	printf("]\n");
-
-	isr1_word_entry* cur_word = root->word_list;
-
-	while (cur_word) {
-		printf("> Found word : [%.*s]\n", cur_word->word_len, cur_word->word);
-
-		isr1_ref_entry* cur_ref = cur_word->ref_list;
-
-		while (cur_ref) {
-			printf("-> Appears in refID %d\n", cur_ref->ref_id);
-			cur_ref = cur_ref->next;
-		}
-
-		cur_word = cur_word->next;
-	}
-
-	dump_tree(root->left);
-	dump_tree(root->right);
-}
-
 void free_tree(isr1_tree_node* root) {
 	/* Quick recursive cleanup of the tree and everything allocated inside. */
 
@@ -570,11 +533,4 @@ int list_length(isr1_word_entry* head) {
 	}
 
 	return output;
-}
-
-void print_list(isr1_word_entry* head) {
-	while (head) {
-		isr1_debug("List element : [%.*s]\n", head->word_len, head->word);
-		head = head->global_next;
-	}
 }
