@@ -521,16 +521,3 @@ int divide_list(isr1_word_entry* head, isr1_word_entry** first, isr1_word_entry*
 
 	return 1;
 }
-
-int list_length(isr1_word_entry* head) {
-	/* Only use when necessary. This walks the entire list. */
-
-	int output = 0;
-
-	while (head) {
-		output++;
-		head = head->global_next;
-	}
-
-	return output;
-}
