@@ -22,8 +22,6 @@
  * This allows me to efficiently keep a contiguous linked list of all the independent word entries with little overhead and no memory penalties.
  * Now that I had a contiguous list of words, I used my word comparison function to implement a mergesort on the linked list.
  *
- * -- Profiling --
- *
  */
 
 /*
