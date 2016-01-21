@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
 
 	fprintf(stdout, "Word");
 
-	for (int i = 0; i < largest_word; ++i) {
+	for (int i = 0; i < largest_word - 4; ++i) {
 		fputc(' ', stdout);
 	}
 
