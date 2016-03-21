@@ -29,7 +29,7 @@
  */
 
 #define ISR3_HASH_LENGTH 4
-#define ISR3_BTREE "./search.db"
+#define ISR3_BTREE "search.db"
 
 /*
  * Debug output control.
@@ -58,10 +58,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#include <sys/types.h>
-#include <limits.h>
 #include <db.h>
-#include <fcntl.h>
 
 /*
  * Since we are hashing the word values to store them in the tree, we will need to utilize open hashing to keep track of words with the same hash.
@@ -130,10 +127,15 @@ int main(int argc, char** argv) {
 	isr3_tree_node* root = NULL;
 	isr3_word_entry* word_list_g = NULL;
 
-	DB* perm_btree = dbopen(ISR3_BTREE, 0, O_RDWR, DB_BTREE, NULL);
+	DB* perm_btree = NULL;
 
-	if (!perm_btree) {
-		isr3_errf("Failed to create B-tree at disk location [%s]\n", ISR3_BTREE);
+	if (db_create(&perm_btree, NULL, 0)) {
+		isr3_err("Failed to initialize B-tree structure.\n");
+		return 1;
+	}
+
+	if (perm_btree->open(perm_btree, NULL, ISR3_BTREE, NULL, DB_BTREE, DB_CREATE, 0664)) {
+		isr3_errf("Failed to open B-tree at disk location [%s]\n", ISR3_BTREE);
 		return 1;
 	}
 
@@ -188,7 +190,7 @@ int main(int argc, char** argv) {
 	}
 
 	free_tree(root); /* We cleanly exit, returning all memory to the OS. */
-	perm_btree->close(perm_btree);
+	perm_btree->close(perm_btree, 0);
 
 	/* To prevent bad things from happening at next runtime, we destroy the btree. */
 	if (remove(ISR3_BTREE)) {
@@ -588,7 +590,6 @@ void gen_permuterm(isr3_word_entry* entry, DB* tree) {
 		memcpy(permbuf + inp_wordlen - i, inp_word, i);
 
 		isr3_debugf("Permuterm %d of [%.*s] : [%.*s]\n", i, inp_wordlen, inp_word, inp_wordlen, permbuf);
-		btree_add(tree, (unsigned char*) permbuf, (unsigned char*) entry, sizeof entry, 1);
 
 		DBT key = {0}, data = {0};
 
@@ -598,7 +599,7 @@ void gen_permuterm(isr3_word_entry* entry, DB* tree) {
 		data.data = entry;
 		data.size = sizeof entry;
 
-		tree->put(tree, &key, &data, 0);
+		tree->put(tree, NULL, &key, &data, 0);
 	}
 
 	free(permbuf);

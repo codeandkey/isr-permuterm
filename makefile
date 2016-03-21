@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -std=gnu99 -Wall -g -pedantic -DISR3_VERBOSE
-LDFLAGS =
+LDFLAGS = -ldb
 
 SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
