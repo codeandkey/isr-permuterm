@@ -1,19 +1,21 @@
 CC = gcc
-CFLAGS = -std=gnu99 -Wall -O3
+CFLAGS = -std=gnu99 -Wall -g -pedantic -DISR3_VERBOSE
 LDFLAGS =
 
 SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
 
-OUTPUT = isr-prog1
+OUTPUT = isr-prog3
 
 all: $(OUTPUT)
 
 $(OUTPUT): $(OBJECTS)
-	$(CC) $(OBJECTS) $(LDFLAGS) -o $(OUTPUT)
+	@echo LD $(OBJECTS)
+	@$(CC) $(OBJECTS) $(LDFLAGS) -o $(OUTPUT)
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	@echo CC $<
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(OBJECTS)
