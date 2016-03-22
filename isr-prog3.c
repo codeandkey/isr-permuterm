@@ -29,7 +29,6 @@
  */
 
 #define ISR3_HASH_LENGTH 4
-#define ISR3_BTREE "search.db"
 
 /*
  * Debug output control.
@@ -58,17 +57,7 @@
 #include <string.h>
 #include <ctype.h>
 
-/* This library is kinda weird about including C sources. */
-
-#include "bplus/bplus_tree.c"
-#include "bplus/bplus_search.c"
-#include "bplus/bplus_remove.c"
-#include "bplus/bplus_rebalance.c"
-#include "bplus/bplus_node.c"
-#include "bplus/bplus_leaf.c"
-#include "bplus/bplus_iterator.c"
-#include "bplus/bplus_insert.c"
-#include "bplus/bplus_foreach.c"
+#include "permuterm.h"
 
 /*
  * Since we are hashing the word values to store them in the tree, we will need to utilize open hashing to keep track of words with the same hash.
@@ -190,7 +179,7 @@ int main(int argc, char** argv) {
 	}
 
 	free_tree(root); /* We cleanly exit, returning all memory to the OS. */
-	perm_btree->close(perm_btree, 0);
+	isr3_permuterm_free(perm_btree);
 
 	/* To prevent bad things from happening at next runtime, we destroy the btree. */
 	if (remove(ISR3_BTREE)) {

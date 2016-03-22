@@ -1,8 +1,14 @@
 #include "permuterm.h"
 
+#include <stdlib.h>
+#include <string.h>
+
 static int cmp_permuterm_node(char* query, int query_len, struct isr3_permuterm_key* key);
 static int cmp_permuterm_prefix(char* query, int query_len, struct isr3_permuterm_key* key);
-static void isr3_permuterm_node_search(struct isr3_permuterm_node* node, char* query, int query_len, void (*callback)(struct isr3_word_entry* value));
+static int isr3_permuterm_node_search(struct isr3_permuterm_node* node, char* query, int query_len, void (*callback)(struct isr3_word_entry* value));
+static int isr3_permuterm_node_insert(struct isr3_permuterm_node* node, struct isr3_permuterm_key* value);
+static int isr3_permuterm_node_insert_nonfull(struct isr3_permuterm_node* node, struct isr3_permuterm_key* value);
+static int isr3_permuterm_node_split_child(struct isr3_permuterm_node* node, int child_index, struct isr3_permuterm_node* child);
 
 struct isr3_permuterm_index* isr3_permuterm_index_create(void) {
 	struct isr3_permuterm_index* output = malloc(sizeof *output);
@@ -11,22 +17,17 @@ struct isr3_permuterm_index* isr3_permuterm_index_create(void) {
 		return NULL;
 	}
 
-	output->buffer = NULL;
-	output->buflen = 0;
-
+	output->root = NULL;
 	return output;
 }
 
 void isr3_permuterm_index_free(struct isr3_permuterm_index* ptr) {
-	for (int i = 0; i < ptr->buflen; ++i) {
-		free(ptr->buffer[i]);
-	}
+	/* TODO: recursively free tree */
 
-	free(ptr->buffer);
 	free(ptr);
 }
 
-void isr3_permuterm_index_insert(struct isr3_permuterm_index* ptr, char* key, int key_len, struct isr3_world_entry* value) {
+void isr3_permuterm_index_insert(struct isr3_permuterm_index* ptr, char* key, int key_len, struct isr3_word_entry* value) {
 	struct isr3_permuterm_key* new_key = malloc(sizeof *new_key);
 
 	new_key->key = malloc(key_len);
@@ -35,12 +36,89 @@ void isr3_permuterm_index_insert(struct isr3_permuterm_index* ptr, char* key, in
 	new_key->key_len = key_len;
 	new_key->value = value;
 
+	isr3_permuterm_node_insert(ptr->root);
+
 	if (!ptr->root) {
 		ptr->root = malloc(sizeof *(ptr->root));
 		ptr->root->is_leaf = 1;
-		ptr->root->keys[0] = 
 		ptr->root->num_keys = 1;
+		ptr->root->keys[0] = new_key;
+
+		return;
 	}
+
+	struct isr3_permuterm_node* node = ptr->root;
+
+	while (node) {
+	}
+}
+
+void isr3_permuterm_node_insert(struct isr3_permuterm_node** root, struct isr3_permuterm_node* parent, struct isr3_permuterm_key* key) {
+	/* The only time *root will be NULL is in the event of an empty tree. */
+
+	if (!*root) {
+		*root = malloc(sizeof *(ptr->root));
+		(*root)->is_leaf = 1;
+		(*root)->num_keys = 1;
+		(*root)->keys[0] = key;
+
+		return;
+	}
+
+	int result;
+
+	for (int i = 0; i < node->num_keys; ++i) {
+		result = cmp_permuterm_node(key->key, key->key_len, (*root)->keys[i]);
+
+		if (result <= 0) {
+			break;
+		}
+	}
+
+	if (!result) {
+		printf("duplicate node %.s*\n" key->key_len, key->key);
+		return;
+	}
+
+	if (result < 0) {
+		/* Greater than or equal to target location. If leaf, insert to left of key. Otherwise, insert to left child. */
+		if ((*root)->is_leaf) {
+			/* Insert into keys list. If overflowing, split the node and decide on a middle. */
+		} else {
+			isr3_permuterm_node_insert((*root)->children[i], key);
+		}
+	}
+
+	if (result > 0) {
+		if ((*root)->is_leaf) {
+		} else {
+			isr3_permuterm_node_insert((*root)->
+		}
+	}
+}
+
+void isr3_permuterm_node_insert_nonfull(struct isr3_permuterm_node* root, struct isr3_permuterm_key* key) {
+	if (root->is_leaf) {
+	} else {
+		int result;
+
+		for (int i = 0; i < node->num_keys; ++i) {
+			result = cmp_permuterm_node(key->key, key->key_len, (*root)->keys[i]);
+
+			if (result <= 0) {
+				break;
+			}
+		}
+
+		if (root->children[i]->num_keys >= BTREE_NUM_KEYS) {
+			/* Child is full. TODO split node */
+		} else {
+			isr3_permuterm_node_insert_nonfull(root->children[i]);
+		}
+	}
+}
+
+int isr3_permuterm_node_split_child(struct isr3_permuterm_node* ptr, int index, struct isr3_permuterm_node* child) {
 }
 
 void isr3_permuterm_index_search(struct isr3_permuterm_index* ptr, char* query, int query_len, void (*callback)(struct isr3_word_entry* value)) {

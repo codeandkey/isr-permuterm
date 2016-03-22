@@ -1,20 +1,20 @@
 #ifndef PERMUTERM_H
 #define PERMUTERM_H
 
-#define BTREE_NUM_KEYS 7
-#define BTREE_NUM_CHILDREN 8
+#define BTREE_DEGREE 9
 
 struct isr3_word_entry;
 
 struct isr3_permuterm_key {
 	char* key;
 	int key_len;
+	struct isr3_word_entry* value;
 };
 
 struct isr3_permuterm_node {
 	int is_leaf, num_keys;
-	struct isr3_permuterm_key* keys[BTREE_NUM_KEYS];
-	struct isr3_permuterm_node* children[BTREE_NUM_CHILDREN];
+	struct isr3_permuterm_key* keys[BTREE_DEGREE - 1];
+	struct isr3_permuterm_node* children[BTREE_DEGREE];
 };
 
 struct isr3_permuterm_index {
