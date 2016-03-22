@@ -58,7 +58,17 @@
 #include <string.h>
 #include <ctype.h>
 
-#include <db.h>
+/* This library is kinda weird about including C sources. */
+
+#include "bplus/bplus_tree.c"
+#include "bplus/bplus_search.c"
+#include "bplus/bplus_remove.c"
+#include "bplus/bplus_rebalance.c"
+#include "bplus/bplus_node.c"
+#include "bplus/bplus_leaf.c"
+#include "bplus/bplus_iterator.c"
+#include "bplus/bplus_insert.c"
+#include "bplus/bplus_foreach.c"
 
 /*
  * Since we are hashing the word values to store them in the tree, we will need to utilize open hashing to keep track of words with the same hash.
@@ -127,17 +137,7 @@ int main(int argc, char** argv) {
 	isr3_tree_node* root = NULL;
 	isr3_word_entry* word_list_g = NULL;
 
-	DB* perm_btree = NULL;
-
-	if (db_create(&perm_btree, NULL, 0)) {
-		isr3_err("Failed to initialize B-tree structure.\n");
-		return 1;
-	}
-
-	if (perm_btree->open(perm_btree, NULL, ISR3_BTREE, NULL, DB_BTREE, DB_CREATE, 0664)) {
-		isr3_errf("Failed to open B-tree at disk location [%s]\n", ISR3_BTREE);
-		return 1;
-	}
+	BplusTree* btree = bplus_tree_new();
 
 	int largest_word = 0;
 
@@ -568,7 +568,7 @@ int divide_list(isr3_word_entry* head, isr3_word_entry** first, isr3_word_entry*
 	return 1;
 }
 
-void gen_permuterm(isr3_word_entry* entry, DB* tree) {
+void gen_permuterm(isr3_word_entry* entry, BplusTree* tree) {
 	/* To permute the word, we have to use the string kind of like a circular buffer with only two memcpy calls. */
 	/* This is a pretty quick and easy way to do it. */
 
@@ -599,13 +599,13 @@ void gen_permuterm(isr3_word_entry* entry, DB* tree) {
 		data.data = entry;
 		data.size = sizeof entry;
 
-		tree->put(tree, NULL, &key, &data, 0);
+		
 	}
 
 	free(permbuf);
 	free(inp_word);
 }
 
-void search_permuterm(char* query, int len, DB* tree, void (*callback)(struct isr3_word_entry* entry)) {
+void search_permuterm(char* query, int len, avl_tree_t* tree, void (*callback)(struct isr3_word_entry* entry)) {
 	/* Most of the work here will be spent transforming the query into a permuterm query (which isn't too hard anyway) */
 }
