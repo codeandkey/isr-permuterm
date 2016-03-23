@@ -226,7 +226,7 @@ int parse_file(const char* filename, unsigned int ref_id, isr3_tree_node** root,
 
 	while (!feof(fd)) {
 		/* First: get rid of any preceding whitespace (but store the last character in the first index of cur_word) */
-		while (isspace(cur_char = fgetc(fd)));
+		while (isspace(cur_char = fgetc(fd)) || cur_char == '\'' || cur_char == '-' || cur_char == '$');
 
 		if (cur_char == EOF) {
 			break; /* Depending on the file, an EOF may occur here if there is no whitespace between the last word and the EOF. */
@@ -245,7 +245,7 @@ int parse_file(const char* filename, unsigned int ref_id, isr3_tree_node** root,
 
 		/* Next: read until the next whitespace character. */
 		while (!isspace(cur_char = fgetc(fd)) && !feof(fd)) {
-			if (cur_char == '\'' || cur_char == '-') {
+			if (cur_char == '\'' || cur_char == '-' || cur_char == '$') {
 				continue; /* This seems to be the most effective method of handling punctuation (simply removing it from the word prior to stemming) [subject to change] */
 			}
 

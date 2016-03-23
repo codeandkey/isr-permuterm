@@ -33,7 +33,18 @@ void isr3_permuterm_index_free(struct isr3_permuterm_index* ptr) {
 void isr3_permuterm_index_insert(struct isr3_permuterm_index* ptr, char* key, int key_len, struct isr3_word_entry* value) {
 	struct isr3_permuterm_key* new_key = malloc(sizeof *new_key);
 
+	if (!new_key) {
+		isr3_err("malloc failed with new btree node\n");
+		exit(1);
+	}
+
 	new_key->key = malloc(key_len);
+
+	if (!new_key->key) {
+		isr3_err("malloc failed with new btree key\n");
+		exit(1);
+	}
+
 	memcpy(new_key->key, key, key_len);
 
 	new_key->key_len = key_len;
