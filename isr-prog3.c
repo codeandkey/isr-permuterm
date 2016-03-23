@@ -29,22 +29,7 @@
  */
 
 #define ISR3_HASH_LENGTH 4
-
-/*
- * Debug output control.
- * If we are not configured to be verbose, we trash the definition of isr3_debugf.
- */
-
-#ifdef ISR3_VERBOSE
-#define isr3_debugf(x, ...) fprintf(stderr, "[%s] " x, __func__, ##__VA_ARGS__)
-#define isr3_debug(x) fprintf(stderr, "[%s] " x, __func__)
-#else
-#define isr3_debugf(x, ...)
-#define isr3_debug(x)
-#endif
-
-#define isr3_errf(x, ...) fprintf(stderr, "[%s] " x, __func__, ##__VA_ARGS__)
-#define isr3_err(x) fprintf(stderr, "[%s] " x, __func__)
+#define ISR3_QUERY_LENGTH 512 /* Big queries? */
 
 /*
  * Header includes.
@@ -57,6 +42,7 @@
 #include <string.h>
 #include <ctype.h>
 
+#include "debug.h"
 #include "permuterm.h"
 
 /*
@@ -64,21 +50,7 @@
  * This leads us to create a 2D linked list: One axis is the target word, the other is which files reference it.
  */
 
-typedef struct isr3_ref_entry isr3_ref_entry;
-
-struct isr3_ref_entry {
-	unsigned int ref_id;
-	isr3_ref_entry* next;
-};
-
-typedef struct isr3_word_entry isr3_word_entry;
-
-struct isr3_word_entry {
-	char* word; // We'll have to use dynamically allocated strings!
-	int word_len;
-	isr3_ref_entry* ref_list_head, *ref_list_tail; // List of which files reference this word.
-	isr3_word_entry* next, *global_next; // The usage of two `next` members is explained in main() and in the file header comments.
-};
+#include "entry_types.h"
 
 /*
  * The tree structure is pretty straightforward.
@@ -101,8 +73,9 @@ int insert_word(char* word_buf, int word_len, unsigned int ref_id, isr3_tree_nod
 isr3_word_entry* sort_list(isr3_word_entry* word_list);
 void free_tree(isr3_tree_node* root);
 
-void gen_permuterm(isr3_word_entry* entry, DB* tree); /* For each permutation of the word, insert a permuterm key pointing to "entry" into a btree. */
-void search_permuterm(char* query, int query_len, DB* tree, void (*callback)(isr3_word_entry* list));
+void gen_permuterm(isr3_word_entry* entry, struct isr3_permuterm_index* index); /* For each permutation of the word, insert a permuterm key pointing to "entry" into a btree. */
+void search_permuterm(char* query, int query_len, struct isr3_permuterm_index* tree, int wildcard_count, int* search_id, void (*callback)(isr3_word_entry* list, int search_id));
+void callback_permuterm(struct isr3_word_entry* entry, int search_id);
 
 /* Utility functions : hashing and comparing words. */
 
@@ -119,6 +92,10 @@ int list_length(isr3_word_entry* head);
 
 extern int stem(char* c, int i, int j);
 
+/* An array in static space, tracking search IDs for document references -- this is important for tracking which document IDs are included in the (conjunctive) search output. */
+static int* isr3_ref_entry_sids = NULL;
+static int isr3_ref_entry_count = 0;
+
 /* Function definitions. */
 
 int main(int argc, char** argv) {
@@ -126,7 +103,7 @@ int main(int argc, char** argv) {
 	isr3_tree_node* root = NULL;
 	isr3_word_entry* word_list_g = NULL;
 
-	BplusTree* btree = bplus_tree_new();
+	struct isr3_permuterm_index* perm_index = isr3_permuterm_index_create();
 
 	int largest_word = 0;
 
@@ -158,33 +135,73 @@ int main(int argc, char** argv) {
 
 	/* We insert the sorted wordlist into the on-disk B-tree -- I'm not yet sure if sorting the list is even necessary now. */
 
+	struct isr3_word_entry* tmp_gwordlist = word_list_g;
 	while (word_list_g) {
-		fprintf(stdout, "%.*s", word_list_g->word_len, word_list_g->word);
-
-		for (int i = 0; i < (largest_word - word_list_g->word_len) + 1; ++i) { /* Extra space to accomadate the column seperator. */
-			fputc(' ', stdout);
-		}
-
-		isr3_ref_entry* cur_ref = word_list_g->ref_list_head;
-
-		while (cur_ref) {
-			fprintf(stdout, "%02d ", cur_ref->ref_id + 1);
-			cur_ref = cur_ref->next;
-		}
-
-		fputc('\n', stdout);
-		gen_permuterm(word_list_g, perm_btree);
-
+		gen_permuterm(word_list_g, perm_index);
 		word_list_g = word_list_g->global_next;
 	}
 
-	free_tree(root); /* We cleanly exit, returning all memory to the OS. */
-	isr3_permuterm_free(perm_btree);
+	word_list_g = tmp_gwordlist;
 
-	/* To prevent bad things from happening at next runtime, we destroy the btree. */
-	if (remove(ISR3_BTREE)) {
-		isr3_err("Failed to remove B-tree file from disk. This could interfere with the next execution.\n");
+	/* Before searching, we prepare the refID search tracker. */
+	isr3_ref_entry_count = argc - 1;
+	isr3_ref_entry_sids = malloc(sizeof *isr3_ref_entry_sids * isr3_ref_entry_count);
+
+	/* Prepare the search prompt and ask for a string. */
+
+	while (1) {
+		int search_id = 0;
+
+		for (int i = 0; i < isr3_ref_entry_count; ++i) {
+			isr3_ref_entry_sids[i] = 0;
+		}
+
+		fprintf(stdout, "Search string: ");
+
+		char query_buf[ISR3_QUERY_LENGTH + 1] = {0}, *query_buf_read = query_buf, *query_buf_read_tmp = query_buf;
+		fgets(query_buf, sizeof query_buf / sizeof *query_buf, stdin);
+
+		if (query_buf[0] == '\n') {
+			break;
+		}
+
+		while (*query_buf_read && isspace(*(query_buf_read))) query_buf_read++; /* Cut off leading whitespace. */
+
+		while (*query_buf_read) {
+			int length = 0, has_wildcards = 0;
+			query_buf_read_tmp = query_buf_read;
+
+			while (*query_buf_read_tmp && !isspace(*(query_buf_read_tmp++))) {
+				++length;
+
+				if (*(query_buf_read_tmp - 1) == '*') {
+					has_wildcards++;
+				}
+			}
+
+			int stem_length = length;
+
+			if (!has_wildcards) {
+				/* If there are no wildcards in the query. we can get a more accurate result by stemming the input. */
+				stem_length = stem(query_buf_read, 0, length - 1) + 1;
+			}
+
+			isr3_debugf("searching for [%.*s]\n", stem_length, query_buf_read);
+			search_permuterm(query_buf_read, stem_length, perm_index, has_wildcards, &search_id, callback_permuterm);
+			query_buf_read = query_buf_read_tmp;
+		}
+
+		/* Search is complete. We can examine which refIDs passed the search by comparing the static tracker with the last search id. */
+		for (int i = 0; i < isr3_ref_entry_count; ++i) {
+			if (isr3_ref_entry_sids[i] == search_id) {
+				printf("%s\n", argv[i + 1]);
+			}
+		}
 	}
+
+	free_tree(root); /* We cleanly exit, returning all memory to the OS. */
+	free(isr3_ref_entry_sids);
+	isr3_permuterm_index_free(perm_index);
 
 	return 0;
 }
@@ -228,7 +245,7 @@ int parse_file(const char* filename, unsigned int ref_id, isr3_tree_node** root,
 
 		/* Next: read until the next whitespace character. */
 		while (!isspace(cur_char = fgetc(fd)) && !feof(fd)) {
-			if (cur_char == '\'') {
+			if (cur_char == '\'' || cur_char == '-') {
 				continue; /* This seems to be the most effective method of handling punctuation (simply removing it from the word prior to stemming) [subject to change] */
 			}
 
@@ -557,7 +574,7 @@ int divide_list(isr3_word_entry* head, isr3_word_entry** first, isr3_word_entry*
 	return 1;
 }
 
-void gen_permuterm(isr3_word_entry* entry, BplusTree* tree) {
+void gen_permuterm(isr3_word_entry* entry, struct isr3_permuterm_index* index) {
 	/* To permute the word, we have to use the string kind of like a circular buffer with only two memcpy calls. */
 	/* This is a pretty quick and easy way to do it. */
 
@@ -569,32 +586,102 @@ void gen_permuterm(isr3_word_entry* entry, BplusTree* tree) {
 		return;
 	}
 
+	memset(permbuf, 0, inp_wordlen);
 	memcpy(inp_word, entry->word, entry->word_len);
 
 	inp_word[inp_wordlen - 2] = '$';
 	inp_word[inp_wordlen - 1] = permbuf[inp_wordlen - 1] = 0;
 
-	for (int i = 0; i < inp_wordlen; ++i) {
-		memcpy(permbuf, inp_word + i, inp_wordlen - i);
-		memcpy(permbuf + inp_wordlen - i, inp_word, i);
+	for (int i = 0; i < inp_wordlen - 1; ++i) {
+		memcpy(permbuf, inp_word + i, inp_wordlen - i - 1);
+		memcpy(permbuf + inp_wordlen - i - 1, inp_word, i);
 
-		isr3_debugf("Permuterm %d of [%.*s] : [%.*s]\n", i, inp_wordlen, inp_word, inp_wordlen, permbuf);
+		isr3_debugf("Permuterm %d of [%s] : [%s]\n", i, inp_word, permbuf);
 
-		DBT key = {0}, data = {0};
-
-		key.data = permbuf;
-		key.size = inp_wordlen;
-
-		data.data = entry;
-		data.size = sizeof entry;
-
-		
+		isr3_permuterm_index_insert(index, permbuf, inp_wordlen - 1, entry);
 	}
 
 	free(permbuf);
 	free(inp_word);
 }
 
-void search_permuterm(char* query, int len, avl_tree_t* tree, void (*callback)(struct isr3_word_entry* entry)) {
-	/* Most of the work here will be spent transforming the query into a permuterm query (which isn't too hard anyway) */
+void search_permuterm(char* query, int len, struct isr3_permuterm_index* index, int wildcard_count, int* search_id, void (*callback)(struct isr3_word_entry* entry, int search_id)) {
+	if (!wildcard_count) {
+		isr3_permuterm_index_search(index, query, len, ++*search_id, callback); /* No wildcards involved, we have a pretty easy search. */
+	} else if (wildcard_count == 1) {
+		/* [everything after *]$[everything before *] */
+
+		int wildcard_pos = 0;
+
+		for (int i = 0; i < len; ++i) {
+			if (query[i] == '*') {
+				wildcard_pos = i;
+				break;
+			}
+		}
+
+		char* query_tmp = malloc(len);
+
+		memcpy(query_tmp, query + wildcard_pos + 1, len - (wildcard_pos + 1));
+		query_tmp[len - (wildcard_pos + 1)] = '$';
+		memcpy(query_tmp + len - (wildcard_pos + 1) + 1, query, wildcard_pos);
+
+		isr3_debugf("tmp query: [%.*s]\n", len, query_tmp);
+		isr3_permuterm_index_search(index, query_tmp, len, ++*search_id, callback);
+
+		free(query_tmp);
+	} else if (wildcard_count == 2) {
+		int first_wildcard_pos = -1, second_wildcard_pos = -1;
+
+		for (int i = 0; i < len; ++i) {
+			if (query[i] == '*') {
+				if (first_wildcard_pos < 0) {
+					first_wildcard_pos = i;
+				} else {
+					second_wildcard_pos = i;
+					break;
+				}
+			}
+		}
+
+		int s1_length = first_wildcard_pos, s2_length = (second_wildcard_pos - 1) - (first_wildcard_pos), s3_length = len - (second_wildcard_pos + 1);
+
+		if (s1_length + s3_length) {
+			char* query_first = malloc(s1_length + s3_length + 1);
+			memcpy(query_first, query + second_wildcard_pos + 1, len - (second_wildcard_pos + 1));
+			query_first[len - (second_wildcard_pos + 1)] = '$';
+			memcpy(query_first + len - (second_wildcard_pos + 1) + 1, query, first_wildcard_pos);
+
+			isr3_debugf("second query: [%.*s]\n", s1_length + s3_length + 1, query_first);
+			isr3_permuterm_index_search(index, query_first, s1_length + s3_length + 1, ++*search_id, callback);
+			free(query_first);
+		}
+
+		if (!s2_length) {
+			isr3_err("Odd query detected -- two consecutive wildcards? Ignoring.\n");
+			return;
+		}
+
+		char* query_second = malloc(s2_length);
+		memcpy(query_second, query + first_wildcard_pos + 1, s2_length);
+
+		isr3_debugf("second query: [%.*s]\n", s2_length, query_second);
+		isr3_permuterm_index_search(index, query_second, s2_length, ++*search_id, callback);
+		free(query_second);
+	} else {
+		isr3_err("A maximum of two wildcards are supported!\n");
+		exit(1);
+	}
+}
+
+void callback_permuterm(struct isr3_word_entry* entry, int search_id) {
+	struct isr3_ref_entry* cur_ref = entry->ref_list_head;
+
+	while (cur_ref) {
+		if (isr3_ref_entry_sids[cur_ref->ref_id] == search_id - 1) {
+			isr3_ref_entry_sids[cur_ref->ref_id] = search_id;
+		}
+
+		cur_ref = cur_ref->next;
+	}
 }

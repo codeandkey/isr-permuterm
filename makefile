@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=gnu99 -Wall -g -pedantic -DISR3_VERBOSE -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include
+CFLAGS = -std=gnu99 -Wall -g -pedantic
 LDFLAGS = -ldb
 
 SOURCES = $(wildcard *.c)
