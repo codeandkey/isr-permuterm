@@ -1,11 +1,12 @@
-# Justin Stanley
-# Information Storage and Retrieval
-## Project 3
+## isr-permuterm
+### Instructions
 
 To compile this project, execute `make`. To clean object files and binaries, execute `make cleanbin`.
 This project should compile without warnings on GCC 5.3.0+.
 
-This program uses a handwritten implementation of a B-tree, which stores all of the nodes in RAM.
+### Implementation
+
+This program uses a handwritten implementation of an in-memory B-tree, which stores all of the nodes in RAM.
 As a result, memory could become a big problem with a large document collection due to the growth rate of a permuterm index.
 
 The program supports search queries with a maximum two wildcards per term.

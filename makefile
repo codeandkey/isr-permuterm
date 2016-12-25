@@ -5,7 +5,7 @@ LDFLAGS = -ldb
 SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
 
-OUTPUT = isr-prog3
+OUTPUT = isr-permuterm
 
 all: $(OUTPUT)
 
